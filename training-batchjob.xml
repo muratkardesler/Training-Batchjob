@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+	<sfdc:cached-basic-config name="Salesforce__Basic_Authentication" username="muratkardesler70@gmail.com" password="Muratk21." securityToken="6lCnXApxEXbQr5xu3ghZzUhV8" doc:name="Salesforce: Basic Authentication"/>
+	<flow name="training-batchjobFlow">
+		<file:inbound-endpoint path="C:\Users\User\Desktop\Training\workspace2\training-batchjob\src\test\resources\in" moveToDirectory="C:\Users\User\Desktop\Training\workspace2\training-batchjob\src\test\resources\out" pollingFrequency="5000" responseTimeout="10000" doc:name="File"/>
+		<dw:transform-message doc:name="Transform-FullName" metadata:id="bf792d1b-c8fa-41ca-8371-8ebf42ba309f">
+			<dw:input-payload doc:sample="sample_data\list_csv.csv" mimeType="application/csv"/>
+			<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload map ((payload01 , indexOfPayload01) -> {
+ externelId: payload01.id,
+ name: payload01.firstname ++ " " ++ payload01.lastname
+})]]></dw:set-payload>
+		</dw:transform-message>
+		<batch:execute name="training-batchjobBatch" doc:name="Batch Execute"/>
+	</flow>
+	<batch:job name="training-batchjobBatch">
+		<batch:process-records>
+			<batch:step name="Batch_Step1">
+				<enricher source="#[payload.size() &gt; 0]" target="#[recordVars.exits]" doc:name="Message Enricher">
+					<sfdc:query config-ref="Salesforce__Basic_Authentication" query="dsql:SELECT Id,Name,t_id__c FROM Account WHERE t_id__c = '#[payload.externelId]'" doc:name="Salesforce"/>
+				</enricher>
+			</batch:step>
+			<batch:step name="Batch_Step" accept-expression="#[!recordVars.exits]">
+				<dw:transform-message doc:name="TransformSalesMessage">
+					<dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload map ((payload01 , indexOfPayload01) -> {
+	Name: payload.name,
+	t_id__c: payload.externelId
+})]]></dw:set-payload>
+				</dw:transform-message>
+				<sfdc:upsert config-ref="Salesforce__Basic_Authentication" externalIdFieldName="t_id__c" type="Account" doc:name="Salesforce">
+					<sfdc:objects ref="#[payload]"/>
+				</sfdc:upsert>
+			</batch:step>
+		</batch:process-records>
+		<batch:on-complete>
+			<logger message="succesful" level="INFO" doc:name="Logger"/>
+		</batch:on-complete>
+	</batch:job>
+</mule>
